@@ -14,11 +14,17 @@
   <meta name="apple-mobile-web-app-title" content="Budget" />
   <link rel="apple-touch-icon" href="icon-180.png" />
 
+  <!-- CDN preconnect hints for performance -->
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+  <link rel="dns-prefetch" href="https://unpkg.com">
+  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+
   <!-- libraries (cached for offline by the service worker after first load) -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" charset="utf-8"></script>
 
   <style>
     html, body { margin: 0; background: #F2F2F7; -webkit-tap-highlight-color: transparent; }
@@ -62,7 +68,7 @@ const PieChart = (p) => (<svg {...svgBase(p)}><path d="M21.21 15.89A10 10 0 1 1 
 const Wallet = (p) => (<svg {...svgBase(p)}><path d="M21 12V7H5a2 2 0 0 1-2-2 2 2 0 0 1 2-2h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>);
 const Receipt = (p) => (<svg {...svgBase(p)}><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1Z"/><path d="M16 8H8"/><path d="M16 12H8"/><path d="M13 16H8"/></svg>);
 const Target = (p) => (<svg {...svgBase(p)}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>);
-const PiggyBank = (p) => (<svg {...svgBase(p)}><path d="M19 10c0-3.3-3.1-6-7-6s-7 2.7-7 6c0 1.6.8 3.1 2 4.2V18h3v-2h4v2h3v-3.8c1.2-1.1 2-2.6 2-4.2Z"/><path d="M2 11h2"/><circle cx="15" cy="10" r="0.8" fill="currentColor" stroke="none"/></svg>);
+const PiggyBank = (p) => (<svg {...svgBase(p)}><path d="M19 10c0-3.3-3.1-6-7-6s-7 2.7-7 6c0 1.6.8 3.1 2 4.2V18h3v-2h4v2h3v-3.8c1.2-1.1 2-2.6 2-4.2Z"/><path d="M2 11h2"/><circle cx="15" cy="10" r="0.8"/></svg>);
 const Plus = (p) => (<svg {...svgBase(p)}><path d="M12 5v14"/><path d="M5 12h14"/></svg>);
 const Trash2 = (p) => (<svg {...svgBase(p)}><path d="M3 6h18"/><path d="M19 6l-.8 14a2 2 0 0 1-2 2H7.8a2 2 0 0 1-2-2L5 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>);
 const X = (p) => (<svg {...svgBase(p)}><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>);
@@ -72,7 +78,7 @@ const ChevronRight = (p) => (<svg {...svgBase(p)}><path d="M9 6l6 6-6 6"/></svg>
 /* ---------- default (seed) data ---------- */
 const mkItems = (arr) => arr.map(([name, plan]) => ({ id: uid(), name, plan }));
 const defaultSections = () => [
-  { id: uid(), name: "Income", kind: "income", items: mkItems([["Income \u2013 You", 5200], ["Income \u2013 Wife", 4800], ["Other Income", 0]]) },
+  { id: uid(), name: "Income", kind: "income", items: mkItems([["Income – You", 5200], ["Income – Wife", 4800], ["Other Income", 0]]) },
   { id: uid(), name: "Housing", kind: "expense", items: mkItems([["Mortgage / Rent", 2200], ["Utilities", 220], ["Internet & Phone", 140], ["Home Maintenance", 150]]) },
   { id: uid(), name: "Transportation", kind: "expense", items: mkItems([["Car Payment", 450], ["Fuel", 180], ["Auto Insurance", 160], ["Maintenance & Transit", 90]]) },
   { id: uid(), name: "Food", kind: "expense", items: mkItems([["Groceries", 800], ["Dining Out", 350]]) },
@@ -99,7 +105,7 @@ function sampleTransactions(sections) {
   const m = new Date().getMonth();
   const iso = (d) => `${YEAR}-${pad(m+1)}-${pad(Math.min(d,28))}`;
   const rows = [
-    [15,"Paycheck","Income \u2013 You",5200],[15,"Paycheck","Income \u2013 Wife",4800],
+    [15,"Paycheck","Income – You",5200],[15,"Paycheck","Income – Wife",4800],
     [1,"Mortgage","Mortgage / Rent",2200],[5,"Electric & gas","Utilities",235],
     [5,"Mobile + internet","Internet & Phone",140],[2,"Car loan","Car Payment",450],
     [9,"Gas station","Fuel",85],[22,"Gas station","Fuel",80],[3,"Auto insurance","Auto Insurance",160],
@@ -243,7 +249,7 @@ function App() {
                 <button key={m} onClick={() => { setMonth(i); setTab("log"); }} className="w-full flex items-center px-4 py-3 text-left"
                   style={{ borderBottom: i < 11 ? `1px solid ${C.hair}` : "none" }}>
                   <div className="w-10 text-sm font-semibold" style={{ color: i === month ? C.blue : C.ink }}>{m}</div>
-                  <div className="flex-1 text-sm" style={{ color: active ? C.ink : C.sub }}>{active ? `${money(inc)} in \u00b7 ${money(exp + sav)} out` : "No activity"}</div>
+                  <div className="flex-1 text-sm" style={{ color: active ? C.ink : C.sub }}>{active ? `${money(inc)} in · ${money(exp + sav)} out` : "No activity"}</div>
                   <div className="text-sm font-semibold mr-1" style={{ color: net < 0 ? C.red : C.ink }}>{active ? money(net) : ""}</div>
                   <ChevronRight size={16} style={{ color: C.hair }} />
                 </button>
@@ -328,7 +334,7 @@ function App() {
                 <div key={t.id} className="flex items-center px-4 py-3" style={{ borderBottom: idx < list.length - 1 ? `1px solid ${C.hair}` : "none" }}>
                   <div className="w-12 text-xs font-semibold" style={{ color: C.sub }}>{prettyDate(t.date)}</div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate" style={{ color: C.ink }}>{t.description || "\u2014"}</div>
+                    <div className="text-sm font-medium truncate" style={{ color: C.ink }}>{t.description || "—"}</div>
                     <div className="text-xs truncate" style={{ color: C.sub }}>{catName(t.categoryId)}</div>
                   </div>
                   <div className="text-sm font-semibold mr-3" style={{ color: kindOf(t.categoryId) === "income" ? C.green : C.ink }}>{money(num(t.amount))}</div>
@@ -429,7 +435,7 @@ function App() {
         {tab === "goals" && Goals()}
         {tab === "funds" && Funds()}
       </div>
-      <div className="fixed bottom-0 left-0 right-0" style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", borderTop: `1px solid ${C.hair}`, paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <div className="fixed bottom-0 left-0 right-0" style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", borderTop: `1px solid ${C.hair}`, paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
         <div className="mx-auto flex" style={{ maxWidth: 480 }}>
           {TABS.map((t) => {
             const on = tab === t.id, Icon = t.icon;
@@ -470,7 +476,7 @@ function AddSheet({ flatCats, month, onClose, onAdd }) {
           </SheetField>
           <SheetField label="Category">
             <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full bg-transparent outline-none text-base font-medium" style={{ color: C.ink }}>
-              {flatCats.map((c) => (<option key={c.id} value={c.id}>{c.section + " \u00b7 " + c.name}</option>))}
+              {flatCats.map((c) => (<option key={c.id} value={c.id}>{c.section + " · " + c.name}</option>))}
             </select>
           </SheetField>
           <SheetField label="Description">
@@ -494,10 +500,10 @@ const SheetField = ({ label, children }) => (
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
 
-  <script>
+  <script defer>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
     }
-  <script src="app.js"></script>
+  </script>
 </body>
 </html>
