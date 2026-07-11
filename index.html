@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>Household Budget</title>
+
+  <!-- installable / standalone on iOS + Android -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#F2F2F7" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Budget" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+
+  <!-- libraries (cached for offline by the service worker after first load) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    html, body { margin: 0; background: #F2F2F7; -webkit-tap-highlight-color: transparent; }
+    * { -webkit-user-select: none; user-select: none; }
+    input, select { -webkit-user-select: text; user-select: text; }
+    /* hide scrollbars on the month scrubber */
+    .noscroll::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+
+/* ---------- iOS-like tokens ---------- */
+const C = {
+  bg: "#F2F2F7", card: "#FFFFFF", ink: "#1D1D1F", sub: "#8E8E93", hair: "#E5E5EA",
+  blue: "#007AFF", green: "#34C759", red: "#FF3B30", orange: "#FF9500", tint: "#EAF2FF",
+};
+const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif';
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHFULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const YEAR = new Date().getFullYear();
+const clone = (x) => (window.structuredClone ? window.structuredClone(x) : JSON.parse(JSON.stringify(x)));
+
+/* ---------- helpers ---------- */
+const uid = () => Math.random().toString(36).slice(2, 9);
+const pad = (n) => String(n).padStart(2, "0");
+const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+const money = (n) => { const r = Math.round(n); return (r < 0 ? "-$" : "$") + Math.abs(r).toLocaleString(); };
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const monthOf = (iso) => parseInt(iso.slice(5, 7), 10) - 1;
+const prettyDate = (iso) => `${MONTHS[monthOf(iso)]} ${parseInt(iso.slice(8,10),10)}`;
+
+/* ---------- inline icons ---------- */
+const svgBase = (p) => ({ width: p.size || 22, height: p.size || 22, viewBox: "0 0 24 24",
+  fill: "none", stroke: "currentColor", strokeWidth: p.strokeWidth || 2, strokeLinecap: "round",
+  strokeLinejoin: "round", style: p.style });
+const PieChart = (p) => (<svg {...svgBase(p)}><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>);
+const Wallet = (p) => (<svg {...svgBase(p)}><path d="M21 12V7H5a2 2 0 0 1-2-2 2 2 0 0 1 2-2h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>);
+const Receipt = (p) => (<svg {...svgBase(p)}><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1Z"/><path d="M16 8H8"/><path d="M16 12H8"/><path d="M13 16H8"/></svg>);
+const Target = (p) => (<svg {...svgBase(p)}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>);
+const PiggyBank = (p) => (<svg {...svgBase(p)}><path d="M19 10c0-3.3-3.1-6-7-6s-7 2.7-7 6c0 1.6.8 3.1 2 4.2V18h3v-2h4v2h3v-3.8c1.2-1.1 2-2.6 2-4.2Z"/><path d="M2 11h2"/><circle cx="15" cy="10" r="0.8" fill="currentColor" stroke="none"/></svg>);
+const Plus = (p) => (<svg {...svgBase(p)}><path d="M12 5v14"/><path d="M5 12h14"/></svg>);
+const Trash2 = (p) => (<svg {...svgBase(p)}><path d="M3 6h18"/><path d="M19 6l-.8 14a2 2 0 0 1-2 2H7.8a2 2 0 0 1-2-2L5 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>);
+const X = (p) => (<svg {...svgBase(p)}><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>);
+const RotateCcw = (p) => (<svg {...svgBase(p)}><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>);
+const ChevronRight = (p) => (<svg {...svgBase(p)}><path d="M9 6l6 6-6 6"/></svg>);
+
+/* ---------- default (seed) data ---------- */
+const mkItems = (arr) => arr.map(([name, plan]) => ({ id: uid(), name, plan }));
+const defaultSections = () => [
+  { id: uid(), name: "Income", kind: "income", items: mkItems([["Income \u2013 You", 5200], ["Income \u2013 Wife", 4800], ["Other Income", 0]]) },
+  { id: uid(), name: "Housing", kind: "expense", items: mkItems([["Mortgage / Rent", 2200], ["Utilities", 220], ["Internet & Phone", 140], ["Home Maintenance", 150]]) },
+  { id: uid(), name: "Transportation", kind: "expense", items: mkItems([["Car Payment", 450], ["Fuel", 180], ["Auto Insurance", 160], ["Maintenance & Transit", 90]]) },
+  { id: uid(), name: "Food", kind: "expense", items: mkItems([["Groceries", 800], ["Dining Out", 350]]) },
+  { id: uid(), name: "Health & Personal", kind: "expense", items: mkItems([["Health Insurance", 300], ["Medical & Pharmacy", 100], ["Personal Care", 90], ["Subscriptions", 60]]) },
+  { id: uid(), name: "Lifestyle", kind: "expense", items: mkItems([["Entertainment", 200], ["Shopping", 300], ["Travel", 400], ["Gifts & Donations", 150]]) },
+  { id: uid(), name: "Savings & Funds", kind: "savings", items: mkItems([["Savings Contributions", 1500], ["Sinking Funds", 600], ["Extra Debt Payment", 300]]) },
+];
+const defaultGoals = () => [
+  { id: uid(), name: "Emergency Fund", target: 20000, saved: 8500, monthly: 500, date: "Dec 2026" },
+  { id: uid(), name: "House Down Payment", target: 60000, saved: 15000, monthly: 1200, date: "Jun 2028" },
+  { id: uid(), name: "Dream Vacation", target: 6000, saved: 1200, monthly: 300, date: "Aug 2026" },
+  { id: uid(), name: "New Car Fund", target: 15000, saved: 3000, monthly: 250, date: "Mar 2027" },
+];
+const defaultFunds = () => [
+  { id: uid(), name: "Car Maintenance & Repairs", annual: 1800, balance: 900 },
+  { id: uid(), name: "Holidays & Gifts", annual: 1500, balance: 400 },
+  { id: uid(), name: "Insurance Premiums", annual: 2400, balance: 1200 },
+  { id: uid(), name: "Medical / Dental", annual: 1200, balance: 500 },
+  { id: uid(), name: "Home Repairs", annual: 2000, balance: 800 },
+  { id: uid(), name: "Annual Subscriptions", annual: 600, balance: 300 },
+];
+function sampleTransactions(sections) {
+  const find = (n) => { for (const s of sections) for (const i of s.items) if (i.name === n) return i.id; };
+  const m = new Date().getMonth();
+  const iso = (d) => `${YEAR}-${pad(m+1)}-${pad(Math.min(d,28))}`;
+  const rows = [
+    [15,"Paycheck","Income \u2013 You",5200],[15,"Paycheck","Income \u2013 Wife",4800],
+    [1,"Mortgage","Mortgage / Rent",2200],[5,"Electric & gas","Utilities",235],
+    [5,"Mobile + internet","Internet & Phone",140],[2,"Car loan","Car Payment",450],
+    [9,"Gas station","Fuel",85],[22,"Gas station","Fuel",80],[3,"Auto insurance","Auto Insurance",160],
+    [6,"Supermarket","Groceries",300],[13,"Supermarket","Groceries",280],[27,"Supermarket","Groceries",265],
+    [10,"Restaurant","Dining Out",210],[24,"Takeout","Dining Out",200],[5,"Health insurance","Health Insurance",300],
+    [12,"Haircut","Personal Care",75],[1,"Streaming + apps","Subscriptions",62],[14,"Movies","Entertainment",180],
+    [19,"Clothing","Shopping",260],[28,"Transfer to savings","Savings Contributions",1500],[28,"Sinking funds","Sinking Funds",600],
+  ];
+  return rows.map(([d, desc, cat, amt]) => ({ id: uid(), date: iso(d), month: m, categoryId: find(cat), description: desc, amount: amt })).filter((t) => t.categoryId);
+}
+function freshData() {
+  const sections = defaultSections();
+  return { sections, transactions: sampleTransactions(sections), goals: defaultGoals(), funds: defaultFunds() };
+}
+
+/* ---------- on-device persistence ---------- */
+const KEY = "household-budget-v1";
+function loadData() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+function saveData(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} }
+
+/* ---------- atoms ---------- */
+const Card = ({ children, style, className = "" }) => (
+  <div className={`rounded-2xl ${className}`} style={{ background: C.card, boxShadow: "0 1px 2px rgba(0,0,0,0.04)", ...style }}>{children}</div>
+);
+const Header = ({ title, action }) => (
+  <div className="flex items-end justify-between px-5 pt-3 pb-2">
+    <h1 className="text-3xl font-bold" style={{ color: C.ink, letterSpacing: "-0.02em" }}>{title}</h1>
+    {action}
+  </div>
+);
+const Stat = ({ label, value, color = C.ink }) => (
+  <div className="flex-1">
+    <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.sub }}>{label}</div>
+    <div className="text-lg font-bold mt-0.5" style={{ color }}>{value}</div>
+  </div>
+);
+const Row = ({ k, v, c = C.ink, bold }) => (
+  <div className="flex justify-between text-sm">
+    <span style={{ color: C.sub }} className={bold ? "font-semibold" : ""}>{k}</span>
+    <span style={{ color: c }} className={bold ? "font-bold" : "font-semibold"}>{v}</span>
+  </div>
+);
+const Field = ({ label, value, onChange }) => (
+  <div className="rounded-xl px-3 py-2" style={{ background: C.bg }}>
+    <div className="text-xs font-semibold" style={{ color: C.sub }}>{label}</div>
+    <div className="flex items-center">
+      <span style={{ color: C.ink }} className="text-sm font-semibold">$</span>
+      <input inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-transparent outline-none text-sm font-semibold" style={{ color: C.ink }} />
+    </div>
+  </div>
+);
+function MonthScrubber({ month, setMonth }) {
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1 noscroll">
+      {MONTHS.map((m, i) => {
+        const on = i === month;
+        return (
+          <button key={m} onClick={() => setMonth(i)} className="flex-shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold"
+            style={{ background: on ? C.blue : C.card, color: on ? "#fff" : C.sub, boxShadow: on ? "none" : "0 1px 2px rgba(0,0,0,0.04)" }}>{m}</button>
+        );
+      })}
+    </div>
+  );
+}
+function Ring({ pct, size = 132, stroke = 13, color = C.green }) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r, k = Math.max(0, Math.min(1, pct));
+  return (
+    <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.hair} strokeWidth={stroke} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c * (1 - k)} style={{ transition: "stroke-dashoffset 0.6s ease" }} />
+    </svg>
+  );
+}
+
+/* ---------- app ---------- */
+function App() {
+  const [data, setData] = useState(() => loadData() || freshData());
+  const [tab, setTab] = useState("summary");
+  const [month, setMonth] = useState(new Date().getMonth());
+  const [adding, setAdding] = useState(false);
+  useEffect(() => { saveData(data); }, [data]);
+  const patch = (fn) => setData((d) => { const nd = clone(d); fn(nd); return nd; });
+
+  const calc = useMemo(() => {
+    const actual = (catId, m) => data.transactions.filter((t) => t.categoryId === catId && t.month === m).reduce((s, t) => s + num(t.amount), 0);
+    const sectionActual = (sec, m) => sec.items.reduce((s, i) => s + actual(i.id, m), 0);
+    const kindTotal = (kind, m) => data.sections.filter((s) => s.kind === kind).reduce((s, sec) => s + sectionActual(sec, m), 0);
+    const monthIncome = (m) => kindTotal("income", m), monthExpense = (m) => kindTotal("expense", m), monthSavings = (m) => kindTotal("savings", m);
+    let yIn = 0, yOut = 0, ySave = 0;
+    for (let m = 0; m < 12; m++) { yIn += monthIncome(m); yOut += monthExpense(m); ySave += monthSavings(m); }
+    return { actual, sectionActual, monthIncome, monthExpense, monthSavings, yIn, yOut, ySave };
+  }, [data]);
+
+  const mIn = calc.monthIncome(month), mExp = calc.monthExpense(month), mSav = calc.monthSavings(month);
+  const mLeft = mIn - mExp - mSav, rate = mIn > 0 ? mSav / mIn : 0;
+  const flatCats = data.sections.flatMap((s) => s.items.map((i) => ({ ...i, section: s.name, kind: s.kind })));
+  const catName = (id) => flatCats.find((c) => c.id === id)?.name || "Uncategorized";
+  const kindOf = (id) => flatCats.find((c) => c.id === id)?.kind;
+
+  function Summary() {
+    return (
+      <>
+        <Header title="Overview" action={
+          <button onClick={() => { if (confirm("Reset to sample data? This clears your entries.")) setData(freshData()); }}
+            className="rounded-full p-2" style={{ background: C.card, color: C.sub }}><RotateCcw size={18} /></button>} />
+        <div className="px-5"><MonthScrubber month={month} setMonth={setMonth} /></div>
+        <div className="px-5 mt-4">
+          <Card className="p-5">
+            <div className="flex items-center gap-5">
+              <div className="relative" style={{ width: 132, height: 132 }}>
+                <Ring pct={rate} color={rate >= 0.2 ? C.green : C.orange} />
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <div className="text-2xl font-bold" style={{ color: C.ink }}>{Math.round(rate * 100)}%</div>
+                  <div className="text-xs font-semibold" style={{ color: C.sub }}>saved</div>
+                </div>
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-semibold" style={{ color: C.sub }}>{MONTHFULL[month]}</div>
+                <div className="mt-2 space-y-1.5">
+                  <Row k="Money in" v={money(mIn)} />
+                  <Row k="Spending" v={money(mExp)} />
+                  <Row k="Saved" v={money(mSav)} c={C.green} />
+                  <div style={{ height: 1, background: C.hair }} />
+                  <Row k="Left to budget" v={money(mLeft)} c={mLeft < 0 ? C.red : C.ink} bold />
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+        <div className="px-5 mt-4 flex gap-3">
+          <Card className="flex-1 p-4"><Stat label="Year income" value={money(calc.yIn)} /></Card>
+          <Card className="flex-1 p-4"><Stat label="Year saved" value={money(calc.ySave)} color={C.green} /></Card>
+        </div>
+        <div className="px-5 mt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide px-1 mb-2" style={{ color: C.sub }}>Month by month</div>
+          <Card>
+            {MONTHS.map((m, i) => {
+              const inc = calc.monthIncome(i), exp = calc.monthExpense(i), sav = calc.monthSavings(i), net = inc - exp - sav, active = inc || exp || sav;
+              return (
+                <button key={m} onClick={() => { setMonth(i); setTab("log"); }} className="w-full flex items-center px-4 py-3 text-left"
+                  style={{ borderBottom: i < 11 ? `1px solid ${C.hair}` : "none" }}>
+                  <div className="w-10 text-sm font-semibold" style={{ color: i === month ? C.blue : C.ink }}>{m}</div>
+                  <div className="flex-1 text-sm" style={{ color: active ? C.ink : C.sub }}>{active ? `${money(inc)} in \u00b7 ${money(exp + sav)} out` : "No activity"}</div>
+                  <div className="text-sm font-semibold mr-1" style={{ color: net < 0 ? C.red : C.ink }}>{active ? money(net) : ""}</div>
+                  <ChevronRight size={16} style={{ color: C.hair }} />
+                </button>
+              );
+            })}
+          </Card>
+        </div>
+      </>
+    );
+  }
+
+  function Budget() {
+    return (
+      <>
+        <Header title="Budget" />
+        <div className="px-5"><MonthScrubber month={month} setMonth={setMonth} /></div>
+        <div className="px-5 mt-2 mb-1"><div className="text-sm" style={{ color: C.sub }}>Tap a plan amount to edit it. Bars show {MONTHFULL[month]} actual vs. plan.</div></div>
+        <div className="px-5 space-y-4 mt-2">
+          {data.sections.map((sec) => {
+            const plan = sec.items.reduce((s, i) => s + num(i.plan), 0), act = calc.sectionActual(sec, month);
+            return (
+              <div key={sec.id}>
+                <div className="flex justify-between items-baseline px-1 mb-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wide" style={{ color: C.sub }}>{sec.name}</span>
+                  <span className="text-xs font-semibold" style={{ color: C.sub }}>{money(act)} / {money(plan)}</span>
+                </div>
+                <Card>
+                  {sec.items.map((it, idx) => {
+                    const a = calc.actual(it.id, month), p = num(it.plan), ratio = p > 0 ? a / p : (a > 0 ? 1 : 0), over = a > p && p > 0;
+                    const barColor = sec.kind === "income" ? C.blue : over ? C.red : C.green;
+                    return (
+                      <div key={it.id} className="px-4 py-3" style={{ borderBottom: idx < sec.items.length - 1 ? `1px solid ${C.hair}` : "none" }}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium" style={{ color: C.ink }}>{it.name}</span>
+                          <div className="flex items-center gap-1 text-sm">
+                            <span className="font-semibold" style={{ color: over ? C.red : C.ink }}>{money(a)}</span>
+                            <span style={{ color: C.sub }}>/</span><span style={{ color: C.sub }}>$</span>
+                            <input inputMode="decimal" value={it.plan}
+                              onChange={(e) => patch((d) => { d.sections.find((x) => x.id === sec.id).items.find((x) => x.id === it.id).plan = e.target.value; })}
+                              className="w-14 text-right font-semibold bg-transparent outline-none" style={{ color: C.blue }} />
+                          </div>
+                        </div>
+                        <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: C.hair }}>
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(1, ratio) * 100}%`, background: barColor }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </Card>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  }
+
+  function Log() {
+    const list = data.transactions.filter((t) => t.month === month).sort((a, b) => b.date.localeCompare(a.date));
+    const totalOut = list.filter((t) => kindOf(t.categoryId) !== "income").reduce((s, t) => s + num(t.amount), 0);
+    return (
+      <>
+        <Header title="Transactions" action={
+          <button onClick={() => setAdding(true)} className="rounded-full p-2" style={{ background: C.blue, color: "#fff" }}><Plus size={20} /></button>} />
+        <div className="px-5"><MonthScrubber month={month} setMonth={setMonth} /></div>
+        <div className="px-5 mt-3">
+          <Card className="p-4 flex gap-4">
+            <Stat label={`${MONTHS[month]} in`} value={money(calc.monthIncome(month))} />
+            <Stat label="Out" value={money(totalOut)} />
+            <Stat label="Left" value={money(mLeft)} color={mLeft < 0 ? C.red : C.green} />
+          </Card>
+        </div>
+        <div className="px-5 mt-4">
+          {list.length === 0 ? (
+            <Card className="p-8 text-center">
+              <div className="text-sm font-semibold" style={{ color: C.ink }}>No transactions yet</div>
+              <div className="text-sm mt-1" style={{ color: C.sub }}>Tap + to log your first purchase for {MONTHFULL[month]}.</div>
+            </Card>
+          ) : (
+            <Card>
+              {list.map((t, idx) => (
+                <div key={t.id} className="flex items-center px-4 py-3" style={{ borderBottom: idx < list.length - 1 ? `1px solid ${C.hair}` : "none" }}>
+                  <div className="w-12 text-xs font-semibold" style={{ color: C.sub }}>{prettyDate(t.date)}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate" style={{ color: C.ink }}>{t.description || "\u2014"}</div>
+                    <div className="text-xs truncate" style={{ color: C.sub }}>{catName(t.categoryId)}</div>
+                  </div>
+                  <div className="text-sm font-semibold mr-3" style={{ color: kindOf(t.categoryId) === "income" ? C.green : C.ink }}>{money(num(t.amount))}</div>
+                  <button onClick={() => patch((d) => { d.transactions = d.transactions.filter((x) => x.id !== t.id); })} style={{ color: C.hair }}><Trash2 size={16} /></button>
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  function Goals() {
+    return (
+      <>
+        <Header title="Goals" action={
+          <button onClick={() => patch((d) => d.goals.push({ id: uid(), name: "New goal", target: 1000, saved: 0, monthly: 100, date: "" }))}
+            className="rounded-full p-2" style={{ background: C.blue, color: "#fff" }}><Plus size={20} /></button>} />
+        <div className="px-5 pt-1 space-y-3">
+          {data.goals.map((g) => {
+            const pct = num(g.target) > 0 ? num(g.saved) / num(g.target) : 0;
+            return (
+              <Card key={g.id} className="p-4">
+                <div className="flex items-center justify-between">
+                  <input value={g.name} onChange={(e) => patch((d) => { d.goals.find((x) => x.id === g.id).name = e.target.value; })}
+                    className="text-base font-semibold bg-transparent outline-none flex-1" style={{ color: C.ink }} />
+                  <button onClick={() => patch((d) => { d.goals = d.goals.filter((x) => x.id !== g.id); })} style={{ color: C.hair }}><Trash2 size={16} /></button>
+                </div>
+                <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: C.hair }}>
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(1, pct) * 100}%`, background: C.green }} />
+                </div>
+                <div className="flex justify-between mt-1 text-xs font-semibold" style={{ color: C.sub }}>
+                  <span>{Math.round(pct * 100)}% there</span><span>{money(num(g.target) - num(g.saved))} to go</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-3">
+                  <Field label="Saved" value={g.saved} onChange={(v) => patch((d) => { d.goals.find((x) => x.id === g.id).saved = v; })} />
+                  <Field label="Target" value={g.target} onChange={(v) => patch((d) => { d.goals.find((x) => x.id === g.id).target = v; })} />
+                  <Field label="Monthly" value={g.monthly} onChange={(v) => patch((d) => { d.goals.find((x) => x.id === g.id).monthly = v; })} />
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </>
+    );
+  }
+
+  function Funds() {
+    return (
+      <>
+        <Header title="Sinking Funds" action={
+          <button onClick={() => patch((d) => d.funds.push({ id: uid(), name: "New fund", annual: 1200, balance: 0 }))}
+            className="rounded-full p-2" style={{ background: C.blue, color: "#fff" }}><Plus size={20} /></button>} />
+        <div className="px-5 pt-1 pb-1"><div className="text-sm" style={{ color: C.sub }}>A little set aside each month for big irregular bills.</div></div>
+        <div className="px-5 space-y-3 mt-2">
+          {data.funds.map((fnd) => {
+            const pct = num(fnd.annual) > 0 ? num(fnd.balance) / num(fnd.annual) : 0;
+            return (
+              <Card key={fnd.id} className="p-4">
+                <div className="flex items-center justify-between">
+                  <input value={fnd.name} onChange={(e) => patch((d) => { d.funds.find((x) => x.id === fnd.id).name = e.target.value; })}
+                    className="text-base font-semibold bg-transparent outline-none flex-1" style={{ color: C.ink }} />
+                  <button onClick={() => patch((d) => { d.funds = d.funds.filter((x) => x.id !== fnd.id); })} style={{ color: C.hair }}><Trash2 size={16} /></button>
+                </div>
+                <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: C.hair }}>
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(1, pct) * 100}%`, background: C.blue }} />
+                </div>
+                <div className="flex justify-between mt-1 text-xs font-semibold" style={{ color: C.sub }}>
+                  <span>{money(num(fnd.annual) / 12)}/mo set-aside</span><span>{Math.round(pct * 100)}% funded</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <Field label="Balance" value={fnd.balance} onChange={(v) => patch((d) => { d.funds.find((x) => x.id === fnd.id).balance = v; })} />
+                  <Field label="Annual target" value={fnd.annual} onChange={(v) => patch((d) => { d.funds.find((x) => x.id === fnd.id).annual = v; })} />
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </>
+    );
+  }
+
+  const TABS = [
+    { id: "summary", label: "Overview", icon: PieChart },
+    { id: "budget", label: "Budget", icon: Wallet },
+    { id: "log", label: "Log", icon: Receipt },
+    { id: "goals", label: "Goals", icon: Target },
+    { id: "funds", label: "Funds", icon: PiggyBank },
+  ];
+
+  return (
+    <div style={{ fontFamily: FONT, background: C.bg, minHeight: "100vh" }}>
+      <div className="mx-auto" style={{ maxWidth: 480, paddingBottom: 96 }}>
+        {tab === "summary" && Summary()}
+        {tab === "budget" && Budget()}
+        {tab === "log" && Log()}
+        {tab === "goals" && Goals()}
+        {tab === "funds" && Funds()}
+      </div>
+      <div className="fixed bottom-0 left-0 right-0" style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", borderTop: `1px solid ${C.hair}`, paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div className="mx-auto flex" style={{ maxWidth: 480 }}>
+          {TABS.map((t) => {
+            const on = tab === t.id, Icon = t.icon;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)} className="flex-1 flex flex-col items-center gap-1 py-2 pb-3">
+                <Icon size={22} style={{ color: on ? C.blue : C.sub }} strokeWidth={on ? 2.4 : 2} />
+                <span className="text-xs font-medium" style={{ color: on ? C.blue : C.sub }}>{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {adding && <AddSheet flatCats={flatCats} month={month} onClose={() => setAdding(false)} onAdd={(tx) => { patch((d) => d.transactions.push(tx)); setAdding(false); }} />}
+    </div>
+  );
+}
+
+function AddSheet({ flatCats, month, onClose, onAdd }) {
+  const [date, setDate] = useState(`${YEAR}-${pad(month + 1)}-15`);
+  const [categoryId, setCategoryId] = useState(flatCats[0]?.id);
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const submit = () => { if (!num(amount)) return; onAdd({ id: uid(), date, month: monthOf(date), categoryId, description: description.trim(), amount: num(amount) }); };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full rounded-t-3xl mx-auto" style={{ background: C.bg, maxWidth: 480, fontFamily: FONT, paddingBottom: 24 }}>
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+          <button onClick={onClose} style={{ color: C.sub }}><X size={22} /></button>
+          <div className="font-semibold" style={{ color: C.ink }}>New transaction</div>
+          <button onClick={submit} className="font-semibold" style={{ color: num(amount) ? C.blue : C.hair }}>Add</button>
+        </div>
+        <div className="px-5 pt-2 space-y-3">
+          <SheetField label="Amount">
+            <div className="flex items-center">
+              <span className="text-2xl font-bold mr-1" style={{ color: C.ink }}>$</span>
+              <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="w-full bg-transparent outline-none text-2xl font-bold" style={{ color: C.ink }} />
+            </div>
+          </SheetField>
+          <SheetField label="Category">
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full bg-transparent outline-none text-base font-medium" style={{ color: C.ink }}>
+              {flatCats.map((c) => (<option key={c.id} value={c.id}>{c.section + " \u00b7 " + c.name}</option>))}
+            </select>
+          </SheetField>
+          <SheetField label="Description">
+            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Supermarket" className="w-full bg-transparent outline-none text-base font-medium" style={{ color: C.ink }} />
+          </SheetField>
+          <SheetField label="Date">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full bg-transparent outline-none text-base font-medium" style={{ color: C.ink }} />
+          </SheetField>
+        </div>
+      </div>
+    </div>
+  );
+}
+const SheetField = ({ label, children }) => (
+  <div className="rounded-2xl px-4 py-3" style={{ background: "#FFFFFF" }}>
+    <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#8E8E93" }}>{label}</div>
+    {children}
+  </div>
+);
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+    }
+  </script>
+</body>
+</html>
